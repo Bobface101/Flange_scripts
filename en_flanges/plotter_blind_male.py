@@ -156,13 +156,15 @@ scr_lines.append("20000")
 scr_lines.append("TEXTSTYLE")
 scr_lines.append("ROMANS")
 
-START_DRAWING_POSITION = (0,-30000)
+START_DRAWING_POSITION = (0,-20000)
 gx, gy = START_DRAWING_POSITION # this is the bottom left hand corner of the current drawing
 
 for index, row in main_df.iterrows():
 
 #start reading individual flanges here
-    for col_name, d1 in row.loc["d1_PN6":"d1_PN25"].items():
+    for col_name, d1 in row.loc["d1_PN10":"d1_PN25"].items():
+        thickness_to_spec = False
+        # NO PN6
         
         Type = "Blind"
         Facing = "RF"
@@ -177,6 +179,10 @@ for index, row in main_df.iterrows():
         h = float(row["f2"])
         RF_OD = float(row["x"])
         tf = df.loc[df['DN'] == DN, 'c4'].values[0]   #flange thickness
+        if tf == -999:
+            tf = 100
+            thickness_to_spec = True
+
         tf = tf - h # europeans include the face step height in the dim for flange thickness
 
         scales = [1, 2, 2.5, 4, 5, 10, 15, 20]
@@ -412,6 +418,9 @@ for index, row in main_df.iterrows():
         scr_lines.append("DIMLINEAR") 
         scr_lines.append(fmt(conjugate(pH))) # flange body thickness, excluding neck
         scr_lines.append(fmt(conjugate(pG))) 
+        if thickness_to_spec:
+            scr_lines.append("T") 
+            scr_lines.append("As required") 
         temp = midpoint(conjugate(pH),conjugate(pG))
         scr_lines.append(fmt(((temp[0]),(temp[1]-2*SPACING)))) 
 
@@ -535,7 +544,6 @@ scr_lines.append("E")
 add_sysvar("CMDECHO", 1)
 add_sysvar("DYNMODE", 3)
 add_sysvar("OSMODE", 4133)
-
 # Write .scr file
 #join with newlines
 with open(output_file, 'a', encoding='utf-8') as f:

@@ -164,13 +164,13 @@ for index, row in main_df.iterrows():
 
 #start reading individual flanges here
     for col_name, d1 in row.loc["d1_PN6":"d1_PN25"].items():
-        
+        thickness_to_spec = False
         
         Type = "Blind"
         Facing = "Flat"
         DN = row["DN"]
         PN = col_name.replace("d1_", "")
-        print(f"DN{DN} {PN} d1:{d1}")
+        #print(f"DN{DN} {PN} d1:{d1}")
         df = dfs["EN_"+PN]
         O = df.loc[df['DN'] == DN, 'D'].values[0] #Flange OD
         W = df.loc[df['DN'] == DN, 'K'].values[0]     #Bolt circle diameter
@@ -179,6 +179,10 @@ for index, row in main_df.iterrows():
         bolt_spec_metric = df.loc[df['DN'] == DN, 'd'].values[0]
 
         tf = df.loc[df['DN'] == DN, 'c1'].values[0]   #flange thickness
+
+        if tf == -999:
+            tf = 100
+            thickness_to_spec = True
 
         scales = [1, 2, 2.5, 4, 5, 10, 15, 20]
         
@@ -396,6 +400,9 @@ for index, row in main_df.iterrows():
         scr_lines.append("DIMLINEAR") 
         scr_lines.append(fmt(conjugate(pH))) # flange body thickness, excluding neck
         scr_lines.append(fmt(conjugate(pG))) 
+        if thickness_to_spec:
+            scr_lines.append("T") 
+            scr_lines.append("As required") 
         temp = midpoint(conjugate(pH),conjugate(pG))
         scr_lines.append(fmt(((temp[0]),(temp[1]-2*SPACING)))) 
 
@@ -477,7 +484,7 @@ for index, row in main_df.iterrows():
         
 #type label
 scr_lines.append("TEXT")
-scr_lines.append(fmt((START_DRAWING_POSITION[0]-500,START_DRAWING_POSITION[1])))
+scr_lines.append(fmt((START_DRAWING_POSITION[0]-1500,START_DRAWING_POSITION[1])))
 scr_lines.append(f"{1000}")
 scr_lines.append("90")
 scr_lines.append("BLIND")

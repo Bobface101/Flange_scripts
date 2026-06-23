@@ -10,9 +10,16 @@ def run_script(script_name):
         print(f"Error: {script_name} failed")
         sys.exit(1)
 
-
+"""
 run_script("plotter_blind_flat.py")
 run_script("plotter_blind_rf.py")
 run_script("plotter_blind_male.py")
 run_script("plotter_blind_female.py")
+run_script("plotter_slip_on_rf.py")
+run_script("plotter_slip_on_male.py")
+run_script("plotter_slip_on_female.py")
+"""
+run_script("plotter_weld_neck_rf.py")
+run_script("plotter_weld_neck_male.py")
+run_script("plotter_weld_neck_female.py")
 print("Done.")

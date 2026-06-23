@@ -1,11 +1,12 @@
-## ASME Flanges
+## EN weld neck (TYPE 11) female
+import pandas as pd
 import math
 import csv
 import os
 from fractions import Fraction
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-input_file = os.path.join(script_dir, 'ASME_data.csv')
+input_file = os.path.join(script_dir, 'en_flange_data.csv')
 output_file = os.path.join(script_dir, 'commands.scr')
 scr_lines = []
 
@@ -66,7 +67,6 @@ def line(*points):
     scr_lines.append("LINE")
     for p in points: 
         scr_lines.append(fmt(p))
-    scr_lines.append(fmt(points[0]))
     scr_lines.append("")
 
 
@@ -114,61 +114,107 @@ def add_sysvar(name, value):
     scr_lines.append(name)
     scr_lines.append(str(value))
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+output_file = os.path.join(script_dir, 'commands.scr')
+scr_lines = []
 
-with open(input_file, 'r') as f:
-    reader = csv.reader(f)
-    header = next(reader)#skip header
+csv_files = [
+    'en_flange_data.csv',
+    'EN_PN6.csv',
+    'EN_PN10.csv',
+    'EN_PN16.csv',
+    'EN_PN25.csv',
+    'wall_thickness_en_data.csv'
+]
+
+# Create a dictionary to hold all your dataframes
+dfs = {}
+
+for filename in csv_files:
+    file_path = os.path.join(script_dir, filename)
+    # Strip the '.csv' extension to use as a clean dictionary key
+    key_name = filename.replace('.csv', '') 
+    
+    # Load the CSV into the dictionary
+    dfs[key_name] = pd.read_csv(file_path)
+
+main_df = dfs['en_flange_data']
+pn6_df = dfs['EN_PN6']
+pn10_df = dfs['EN_PN10']
+pn16_df = dfs['EN_PN16']
+pn25_df = dfs['EN_PN25']
+wall_df = dfs['wall_thickness_en_data']
+
+# random settings to make the script be able to do everything itself
+add_sysvar("VTENABLE", 0)
+add_sysvar("DYNMODE", 0)
+add_sysvar("CMDECHO", 0)
+add_sysvar("OSMODE", 0)
+add_sysvar("ATTDIA", 0)
+add_sysvar("ATTREQ", 1)
+add_sysvar("DIMJUST",0)
+add_sysvar("DIMTMOVE", 0)
+scr_lines.append("VIEWRES")
+scr_lines.append("Y")
+scr_lines.append("20000")
+scr_lines.append("TEXTSTYLE")
+scr_lines.append("ROMANS")
 
 
-    # random settings to make the script be able to do everything itself
-    add_sysvar("VTENABLE", 0)
-    add_sysvar("DYNMODE", 0)
-    add_sysvar("CMDECHO", 0)
-    add_sysvar("OSMODE", 0)
-    add_sysvar("ATTDIA", 0)
-    add_sysvar("ATTREQ", 1)
-    add_sysvar("DIMJUST",0)
-    add_sysvar("DIMTMOVE", 0)
-    scr_lines.append("VIEWRES")
-    scr_lines.append("Y")
-    scr_lines.append("20000")
-    scr_lines.append("TEXTSTYLE")
-    scr_lines.append("ROMANS")
+START_DRAWING_POSITION = [0,-90000]
+gx, gy = START_DRAWING_POSITION # this is the bottom left hand corner of the current drawing
 
+for index, row in main_df.iterrows():
 
-    START_DRAWING_POSITION = [0,0]
-    gx, gy = START_DRAWING_POSITION # this is the bottom left hand corner of the current drawing
+#start reading individual flanges here
+    for col_name, d1 in row.loc["d1_PN10":"d1_PN25"].items():
 
-    #start reading individual flanges here
-    for row in reader:
+        bore_to_spec = False
+        thickness_to_spec = False
+        Type = "Weld-Neck"
+        Facing = "Female"
+        DN = row["DN"]
+        PN = col_name.replace("d1_", "")
+        #print(f"DN{DN} {PN} d1:{d1}")
+        df = dfs["EN_"+PN]
+        O = df.loc[df['DN'] == DN, 'D'].values[0] #Flange OD
+        W = df.loc[df['DN'] == DN, 'K'].values[0]     #Bolt circle diameter
+        d = df.loc[df['DN'] == DN, 'L'].values[0]     #bolt hole diameter (mm)
+        n = df.loc[df['DN'] == DN, 'n'].values[0]     #number of bolts
+        bolt_spec_metric = df.loc[df['DN'] == DN, 'd'].values[0]
+        h = float(row["f2"])
 
-        Type = row[3]
-        if not (Type == "Weld Neck"):
-            continue
+        c2 = df.loc[df['DN'] == DN, 'c2'].values[0]     #flange thickness (including step height)
+        tf = c2-h #### EUROPE DONT FORGET IM KROOZ # I do this to reuse old asme coords 
 
-        Series = float(row[0])
-        NPS = float(row[1])
-        Schedule = row[2]
-        RF_OD = float(row[4]) #raised face OD
-        h = float(row[5])     #face step height
-        O = float(row[6])     #OD of flange
-        W = float(row[7])     #Bolt circle diameter
-        d = float(row[9])     #bolt hole diameter (mm)
-        n = int(row[10])      #number of bolts
-        bolt_spec_imperial = row[11]
-        bolt_spec_metric = row[12]
-        L = float(row[13])    #stud bolt length
-        tf = float(row[14])   #flange thickness
-        X = float(row[15])    #hub diameter
-        A_h = float(row[16])  #Neck chamfer
-        Y = float(row[18])
-        B = float(row[20])
-        H = 2*(Y-tf)/3        #hub height, note (2) on table 8,11,etc.
+        H2 = df.loc[df['DN'] == DN, 'H2'].values[0]
+        Y = H2 - h # (same reason as above )
+
+        H3 = df.loc[df['DN'] == DN, 'H3'].values[0]
+        H = Y - tf - H3 # convert to the way ASME dims it
+
+        RF_OD = d1
+        A_h = df.loc[df['DN'] == DN, 'A_h'].values[0] # welding neck diameter
+        X = df.loc[df['DN'] == DN, 'N1'].values[0] # hub diameter 
+        FILLET_RADIUS = df.loc[df['DN'] == DN, 'R1'].values[0]
+
+        S = wall_df.loc[wall_df['DN'] == DN, PN+'_S'].values[0]
+        B = A_h - 2*S #bore dependent on wall thickness
+
+        f3 = float(row["f3"])
+        y = float(row["y"])
+        #print(f"RF_OD (D coord):{RF_OD} y:{y}")
+
 
         bore_to_spec = False
         if B == -999:
             bore_to_spec = True
             B = A_h-10
+        if tf == -999:
+            tf = 100
+            thickness_to_spec = True
+        
+        
 
         scales = [1, 2, 2.5, 4, 5, 10, 15, 20]
         
@@ -214,7 +260,12 @@ with open(input_file, 'r') as f:
         pA = (sx -(-tf -h),  sy)
         pB = (sx -(-tf -h),  sy + B/2)
         pC = (sx -(-tf -h),  sy + RF_OD/2)
-        pD = (sx -(-tf  ),   sy + RF_OD/2)
+
+        p1 = (sx -(-tf -h +f3),  sy + B/2)
+        p2 = (sx -(-tf -h +f3),  sy + y/2)
+        p3 = (sx -(-tf -h),  sy + y/2)
+
+        pD = (sx -(-tf  ),   sy + RF_OD/2 + h)
         pE = (sx -(-tf  ),   sy + W/2 - d/2)
         pF = (sx -(-tf  ),   sy + W/2 + d/2)
         pG = (sx -(-tf  ),   sy + O/2)
@@ -224,7 +275,7 @@ with open(input_file, 'r') as f:
         pK = (sx -(-tf +tf), sy + X/2)
         pL = (sx -(-tf +tf+H), sy + A_h/2)
         pM = (sx -(-tf + Y - ((A_h-B)/2 -1.6)*math.tan((math.pi/180)*30) ),sy + A_h/2)
-        pN = (sx -(-tf + Y),  sy + B/2 + 2)
+        pN = (sx -(-tf + Y),  sy + B/2 + 1.6)
         pO = (sx -(-tf + Y),  sy + B/2)
         pP = (sx -(-tf + Y),  sy)
 
@@ -249,7 +300,7 @@ with open(input_file, 'r') as f:
         """
 
 
-# Collect ALL X and Y coordinates to find the true bounding box
+    # Collect ALL X and Y coordinates to find the true bounding box
         all_x = [pA[0], pB[0], pC[0], pD[0], pE[0], pF[0], pG[0], pH[0], pI[0], pJ[0], pK[0], pL[0], pM[0], pN[0], pO[0], pP[0]]
         all_y = [pA[1], pB[1], pC[1], pD[1], pE[1], pF[1], pG[1], pH[1], pI[1], pJ[1], pK[1], pL[1], pM[1], pN[1], pO[1], pP[1]]
         
@@ -283,30 +334,37 @@ with open(input_file, 'r') as f:
         scr_lines.append(fmt((gx+75, gy + 305*dimscale)))
         scr_lines.append(f"{20*dimscale}")
         scr_lines.append("0")
-        scr_lines.append(f"""{Type}""")
+        scr_lines.append(f"""Weld Neck Female""")
         scr_lines.append("\n\n")
 
         scr_lines.append("TEXT")
         scr_lines.append(fmt((gx, gy + 335*dimscale)))
         scr_lines.append(f"{20*dimscale}")
         scr_lines.append("0")
-        scr_lines.append(f"""#{Series} NPS {NPS}" """)
+        scr_lines.append(f"""DN{DN} {PN}""")
         scr_lines.append("\n\n")
 
         #--- Draw line segments
-        line(pB,pC,pD,pE,pJ,pK,pL,pM,pN,pO,pB)
-        line(pF,pG,pH,pI)
-        line(pB,pA)
-        line(pO,pP)
-        line(pF, pE)
-        line(pI,pJ)
-    
+        if pD[1] > pE[1]:
+            line((p1[0],sy),p1,p2,p3,pC,pD)
+            line(pE,pJ,pK,pL,pM,pN,pO,pP)
+            line(pF,pG,pH,pI,pF)
+            line(pF, pD)
+            line(pI,pJ)
+            line(pO,p1)
+            scr_lines.append("LINE")
+            scr_lines.append(fmt(pE))
+            scr_lines.append(f"@{pD[1]-pE[1]},0")
+            scr_lines.append("")
+        else:
+            line((p1[0],sy),p1,p2,p3,pC,pD,pE,pJ,pK,pL,pM,pN,pO,pP)
+            line(pF,pG,pH,pI,pF)
+            line(pF, pD)
+            line(pI,pJ)
+            line(p1, (p1[0],sy))
+            line(pO,p1)
         
         #Fillets
-        """
-
-        FILLET_RADIUS = lengthof(pL, pK)/3.5 # I chose 3.5 empirically determined from COMPASS
-        FILLET_RADIUS = round(2*FILLET_RADIUS)/2 # round to nearest 0.5
 
         scr_lines.append("FILLET")
         scr_lines.append(fmt(midpoint(pM,pL)))
@@ -320,7 +378,7 @@ with open(input_file, 'r') as f:
         scr_lines.append(f"{FILLET_RADIUS}")
         scr_lines.append(fmt(midpoint(pK,pJ)))
         
-        """
+        
 
         #Change to DIM layer
         scr_lines.append("CLAYER")
@@ -410,10 +468,22 @@ with open(input_file, 'r') as f:
         SPACING = 6.5*dimscale
 
         # main symmetric
-        symmetric_diameter_dim(pB, SPACING, pA)
-        symmetric_diameter_dim(pC, 2*SPACING, pA)
-        symmetric_diameter_dim(midpoint(pF,pE),3*SPACING, pA)
-        symmetric_diameter_dim(pG,4*SPACING, pA)
+        if not bore_to_spec:
+            symmetric_diameter_dim(p1,7*SPACING, pA)
+        else:
+            scr_lines.append("DIMLINEAR")
+            scr_lines.append(fmt(p1))
+            scr_lines.append(fmt(conjugate(p1))) 
+            scr_lines.append("T") # text edit 
+            scr_lines.append(f"""As required""") 
+            temp = midpoint(pB,conjugate(pB))
+            scr_lines.append(fmt(((temp[0]+7*SPACING),(temp[1]))))
+
+        symmetric_diameter_dim(p3,8*SPACING, pA)
+        symmetric_diameter_dim(pC,9*SPACING, pA)
+        symmetric_diameter_dim(midpoint(pF,pE),10*SPACING, pA)
+        symmetric_diameter_dim(pG,11*SPACING, pA)
+
         symmetric_diameter_dim(pM, -2*SPACING, pO)
         symmetric_diameter_dim(pK, -3*SPACING, pO)
 
@@ -437,13 +507,15 @@ with open(input_file, 'r') as f:
         scr_lines.append("DIMLINEAR")
         scr_lines.append(fmt(conjugate(pG))) #chamfer dim
         scr_lines.append(fmt(conjugate(pC))) 
+        scr_lines.append("T") # text edit 
+        scr_lines.append(f"<>x45%%d") 
         temp = (conjugate(pG)[0], conjugate(pG)[1])
         scr_lines.append(fmt(((temp[0]),(temp[1]-1*SPACING)))) 
 
         scr_lines.append("DIMLINEAR") 
-        scr_lines.append(fmt((pL))) # H1
-        scr_lines.append(fmt((pN))) 
-        scr_lines.append(fmt((((pN[0]+pL[0])/2),(pL[1]+2*SPACING)))) 
+        scr_lines.append(fmt((conjugate(pL)))) # H1
+        scr_lines.append(fmt((conjugate(pN)))) 
+        scr_lines.append(fmt((((conjugate(pN)[0]+conjugate(pL)[0])/2),(conjugate(pO)[1]-3*SPACING)))) 
 
         # weld edge lip (neck)
         scr_lines.append("DIMLINEAR")
@@ -451,7 +523,7 @@ with open(input_file, 'r') as f:
         scr_lines.append(fmt(pO)) 
         scr_lines.append("T") # text edit 
         #scr_lines.append("<>{\H0.7x;\S+0,5^-0,0;}") 
-        scr_lines.append("<>%%p1")
+        scr_lines.append("<>%%p0.8")
         temp = (midpoint(pN,pO))
         scr_lines.append(fmt(((temp[0]-0.75*SPACING),(temp[1])))) 
 
@@ -477,7 +549,7 @@ with open(input_file, 'r') as f:
         ray1_angle = math.atan2(pM[1] - pN[1], pM[0] - pN[0])
         bisector1 = (ray1_angle + math.pi / 2) / 2
         tight_arc_pt1 = (pN[0] + arc_r * math.cos(bisector1),
-                         pN[1] + arc_r * math.sin(bisector1))
+                            pN[1] + arc_r * math.sin(bisector1))
 
         scr_lines.append("DIMANGULAR")
         scr_lines.append("")                         # bypass line selection
@@ -485,7 +557,7 @@ with open(input_file, 'r') as f:
         scr_lines.append(fmt(midpoint(pN, pM)))        # endpoint on neck line
         scr_lines.append(fmt((pN[0], pN[1] + 1)))     # endpoint on vertical
         scr_lines.append("T")
-        scr_lines.append("37.5%%d%%p2%%d")
+        scr_lines.append("30%%d{\H0.7x;\S+5%%d^-0%%d;}")
         scr_lines.append(fmt(tight_arc_pt1))
 
         # move text with leader
@@ -494,6 +566,33 @@ with open(input_file, 'r') as f:
         far_away_pt1 = (pN[0] - 3 * SPACING, sy + O / 2 + 1.5 * SPACING)
         scr_lines.append(fmt(far_away_pt1))
         add_sysvar("DIMTMOVE", 0)
+
+        # fillet radius leaders - pick arc body, not ghost vertex
+        cV = conjugate(pL)
+        cW = conjugate(pK)
+        cU = conjugate(pM)
+        cG = conjugate(pJ)
+        shared_text_location = (conjugate(pO)[0] - 2 * SPACING, conjugate(pO)[1] - 2*SPACING)
+
+        # arc at W (between VW and WG lines)
+        arc_W = fillet_arc_mid(cW, cV, cG, FILLET_RADIUS)
+        scr_lines.append("LEADER")
+        scr_lines.append("NEA")
+        scr_lines.append(fmt(arc_W))
+        scr_lines.append(fmt(shared_text_location))
+        scr_lines.append("")
+        scr_lines.append(f"R{FILLET_RADIUS}")
+        scr_lines.append("")
+
+        # arc at V (between UV and VW lines)
+        arc_V = fillet_arc_mid(cV, cU, cW, FILLET_RADIUS)
+        scr_lines.append("LEADER")
+        scr_lines.append("NEA")
+        scr_lines.append(fmt(arc_V))
+        scr_lines.append(fmt(shared_text_location))
+        scr_lines.append("")
+        scr_lines.append(" ")
+        scr_lines.append("")
 
         # global roughness 
         SIDELENGTH = 3.5*dimscale
@@ -510,11 +609,10 @@ with open(input_file, 'r') as f:
         draw_check_mark((p[0] + 33*dimscale, p[1]), SIDELENGTH*1.25)
 
         # leaders
-
-        #leader1
+         #leader1
         scr_lines.append("LEADER")
-        scr_lines.append(fmt(midpoint(pD,pC)))
-        q = (p[0]-30*dimscale,p[1]-1*dimscale)
+        scr_lines.append(fmt(midpoint(p2,p3)))
+        q = (pA[0]+2*SPACING,pA[1]+SPACING)
         scr_lines.append(fmt(q))
         scr_lines.append("")
         scr_lines.append("Ra 25")
@@ -526,8 +624,8 @@ with open(input_file, 'r') as f:
 
         #leader2
         scr_lines.append("LEADER")
-        scr_lines.append(fmt(midpoint(pB,pC)))
-        q = (p[0],p[1]-2*SPACING)
+        scr_lines.append(fmt(midpoint(p1,p2)))
+        q = (pA[0]+SPACING,pA[1]-SPACING)
         scr_lines.append(fmt(q))
         scr_lines.append("")
         scr_lines.append("Ra 12,5")
@@ -543,22 +641,12 @@ with open(input_file, 'r') as f:
         scr_lines.append("H") # Trigger height option
         scr_lines.append(f"{3*dimscale}") # Specify height
         scr_lines.append("@0,0")  # Opposite corner (relative 0,0 forces no text wrapping)
-        scr_lines.append(f"""\W0.75;Studbolt Size: {bolt_spec(bolt_spec_imperial)[0]}" UNC""") # Line 1
-        scr_lines.append(f"""\W0.75;or {bolt_spec(bolt_spec_imperial)[1]} x {L} Long""") # Line 2
-        scr_lines.append("")  
-
-        # dimbreak - auto break crossing dims
-        scr_lines.append("DIMBREAK")
-        scr_lines.append("M")
-        scr_lines.append("C")
-        scr_lines.append(fmt((sel_x1, 2*sy-(max_y + 1))))
-        scr_lines.append(fmt((sel_x2, sel_y2)))
-        scr_lines.append("")
-        scr_lines.append("A")
+        scr_lines.append(f"""\W0.75;Studbolt Size: {bolt_spec_metric}""") # Line 1
+        scr_lines.append("") 
 
         #drawing template
         scr_lines.append("-INSERT")
-        scr_lines.append("asme_flange_template")  
+        scr_lines.append("en_flange_template")  
         scr_lines.append(fmt((gx, gy))) # corner in bottom left at relative 0,0     
         
         #scale it
@@ -567,11 +655,11 @@ with open(input_file, 'r') as f:
         scr_lines.append("0")       # rotation
         
         #attributes
-        scr_lines.append(f"""{NPS:g}", CL{Series:g}, RF, WN, [material], B16.5""")
-        scr_lines.append(f"""{NPS:g}", CL{Series:g}, RF, WN, [материал], B16.5""")
+        scr_lines.append(f"""EN 1092-1/11/F/DN{DN}/{PN}/[material]""")
+        scr_lines.append(f"""EN 1092-1/11/F/DN{DN}/{PN}/[материал]""")
         scr_lines.append(f"1:{dimscale}")    #scale
-        scr_lines.append(f"Маркировку фланца выполнить согласно MSS SP-25")
-        scr_lines.append(f"Flange marking in accordance with MSS SP-25 /")
+        scr_lines.append(f"Маркировку фланца выполнить согласно EN 1092-1 п. 7")
+        scr_lines.append(f"Flange marking in accordance with EN 1092-1 Cl. 7 /")
 
 
         #name
@@ -584,26 +672,43 @@ with open(input_file, 'r') as f:
 
         # Update startpos for next shape
         gx += 200*dimscale
-    
-    
-    #type label
-    scr_lines.append("TEXT")
-    scr_lines.append(fmt(START_DRAWING_POSITION))
-    scr_lines.append(f"{150}")
-    scr_lines.append("90")
-    scr_lines.append("Weld Neck")
-    scr_lines.append("\n\n")
+        
 
-    scr_lines.append("ZOOM")
-    scr_lines.append("E")
-    # Restore defaults
-    add_sysvar("CMDECHO", 1)
-    add_sysvar("DYNMODE", 3)
-    add_sysvar("OSMODE", 4133)
+#type label
+scr_lines.append("TEXT")
+scr_lines.append(fmt((START_DRAWING_POSITION[0]-1500,START_DRAWING_POSITION[1])))
+scr_lines.append(f"{1000}")
+scr_lines.append("90")
+scr_lines.append("WELD NECK")
+scr_lines.append("\n\n")
+
+scr_lines.append("TEXT")
+scr_lines.append(fmt(START_DRAWING_POSITION))
+scr_lines.append(f"{1000}")
+scr_lines.append("90")  
+scr_lines.append("FEMALE")
+
+#big zoom out
+scr_lines.append("ZOOM")
+scr_lines.append("E")
+
+# dimbreak - auto break crossing dims
+scr_lines.append("DIMBREAK")
+scr_lines.append("M")
+scr_lines.append("C")
+scr_lines.append(fmt((gx+210*dimscale,gy)))
+scr_lines.append(fmt((START_DRAWING_POSITION[0],START_DRAWING_POSITION[1]+10000)))
+scr_lines.append("")
+scr_lines.append("A")
+
+# Restore defaults
+add_sysvar("CMDECHO", 1)
+add_sysvar("DYNMODE", 3)
+add_sysvar("OSMODE", 4133)
 
 # Write .scr file
 #join with newlines
-with open(output_file, 'w', encoding='utf-8-sig') as f:
+with open(output_file, 'a', encoding='utf-8') as f:
     f.write('\n'.join(scr_lines))
     f.write('\n')  # Single trailing newline to execute the last command
 

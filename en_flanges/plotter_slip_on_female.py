@@ -1,4 +1,4 @@
-## EN blind female
+## EN slip on male
 import pandas as pd 
 import math
 import csv
@@ -156,19 +156,21 @@ scr_lines.append("20000")
 scr_lines.append("TEXTSTYLE")
 scr_lines.append("ROMANS")
 
-START_DRAWING_POSITION = (0,-30000)
+
+START_DRAWING_POSITION = (0,-60000)
 gx, gy = START_DRAWING_POSITION # this is the bottom left hand corner of the current drawing
 
 for index, row in main_df.iterrows():
 
 #start reading individual flanges here
     for col_name, d1 in row.loc["d1_PN10":"d1_PN25"].items():
+        bore_to_spec = False
         thickness_to_spec = False
-        # not used for PN6
-        Type = "Blind"
+        Type = "Slip-On"
         Facing = "Female"
         DN = row["DN"]
         PN = col_name.replace("d1_", "")
+        #print(f"DN{DN} {PN} d1:{d1}")
         df = dfs["EN_"+PN]
         O = df.loc[df['DN'] == DN, 'D'].values[0] #Flange OD
         W = df.loc[df['DN'] == DN, 'K'].values[0]     #Bolt circle diameter
@@ -180,14 +182,17 @@ for index, row in main_df.iterrows():
         y = float(row["y"])
         RF_OD = d1
         tf = df.loc[df['DN'] == DN, 'c4'].values[0]   #flange thickness
+        B = df.loc[df['DN'] == DN, 'B1'].values[0]
 
+        if B == -999:
+            B = RF_OD - 30
+            bore_to_spec = True
         if tf == -999:
             tf = 100
             thickness_to_spec = True
+        
+        tf = tf-h #### EUROPE DONT FORGET IM KROOZ
 
-        tf = tf - h # europeans include the face step height in the dim for flange thickness
-
-        #print(f"DN{DN} {PN} y: {y}, RF_OD: {RF_OD}")
         scales = [1, 2, 2.5, 4, 5, 10, 15, 20]
         
         #find a scale which fits in the space
@@ -230,16 +235,14 @@ for index, row in main_df.iterrows():
 
         #NEW POINTS
         pA = (sx -(-tf -h),  sy)
-  
-        #pB = (sx -(-tf -h),  sy + B/2)
+        pB = (sx -(-tf -h),  sy + B/2)
         pC = (sx -(-tf -h),  sy + RF_OD/2)
 
-        p1 = (sx -(-tf -h +f3),  sy)
+        p1 = (sx -(-tf -h +f3),  sy + B/2)
         p2 = (sx -(-tf -h +f3),  sy + y/2)
         p3 = (sx -(-tf -h),  sy + y/2)
 
-        pD = (sx -(-tf  ),   sy + RF_OD/2 +h) # chamfer here
-        
+        pD = (sx -(-tf  ),   sy + RF_OD/2 + h)
 
         pE = (sx -(-tf  ),   sy + W/2 - d/2)
         pF = (sx -(-tf  ),   sy + W/2 + d/2)
@@ -253,7 +256,7 @@ for index, row in main_df.iterrows():
         #pN = (sx -(-tf + Y),  sy + B/2 + 2)
         #pO = (sx -(-tf + Y),  sy + B/2)
         #pP = (sx -(-tf + Y),  sy)
-        #pQ = (sx -(-tf + tf), sy + B/2)
+        pQ = (sx -(-tf + tf), sy + B/2)
         pR = (sx -(-tf + tf), sy)
 
         """
@@ -308,7 +311,7 @@ for index, row in main_df.iterrows():
         scr_lines.append(fmt((gx+75, gy + 305*dimscale)))
         scr_lines.append(f"{20*dimscale}")
         scr_lines.append("0")
-        scr_lines.append(f"""Blind Female""")
+        scr_lines.append(f"""Slip-On Female""")
         scr_lines.append("\n\n")
 
         scr_lines.append("TEXT")
@@ -322,19 +325,23 @@ for index, row in main_df.iterrows():
 
         if pD[1] > pE[1]:
             line(p1,p2,p3,pC,pD)
-            line(pE,pJ,pR)
+            line(pE,pJ,pQ,p1)
             line(pF,pG,pH,pI,pF)
             line(pF, pD)
             line(pI,pJ)
+            line(p1, midpoint(p1, conjugate(p1)))
+            line(pQ, pR)
             scr_lines.append("LINE")
             scr_lines.append(fmt(pE))
             scr_lines.append(f"@{pD[1]-pE[1]},0")
             scr_lines.append("")
         else:
-            line(p1,p2,p3,pC,pD,pE,pJ,pR)
+            line(p1,p2,p3,pC,pD,pE,pJ,pQ,p1)
             line(pF,pG,pH,pI,pF)
             line(pF, pD)
             line(pI,pJ)
+            line(p1, midpoint(p1, conjugate(p1)))
+            line(pQ, pR)
 
 
         #Change to DIM layer
@@ -350,6 +357,12 @@ for index, row in main_df.iterrows():
         scr_lines.append(fmt(midpoint(pH,pG,pF,pI)))
         scr_lines.append("")   
         
+        #hatch center
+        scr_lines.append("-HATCH")
+        scr_lines.append(fmt(midpoint(pE,pJ,pQ)))
+        scr_lines.append("")  
+
+
         # --- Mirror 
         scr_lines.append("MIRROR")
         scr_lines.append("C")                          # Crossing selection
@@ -360,10 +373,6 @@ for index, row in main_df.iterrows():
         scr_lines.append(fmt((sx + 1, sy)))              # Second point of mirror line
         scr_lines.append("N")                           # Don't erase source objects
 
-        #hatch center
-        scr_lines.append("-HATCH")
-        scr_lines.append(fmt(midpoint(pE,pJ,pR)))
-        scr_lines.append("")  
 
         # Centerlines 
         #Change to centerline layer
@@ -396,6 +405,17 @@ for index, row in main_df.iterrows():
         scr_lines.append("CENTERLINE")
         scr_lines.append(fmt(midpoint(cpI, cpF)))
         scr_lines.append(fmt(midpoint(cpJ, cpE)))
+
+        # main centerline
+        cpQ = conjugate(pQ); cpB = conjugate(pB)
+        scr_lines.append("ZOOM")
+        scr_lines.append("W")
+        scr_lines.append(fmt((pQ[0] - groove_margin, min(pQ[1], cpQ[1]) - groove_margin)))
+        scr_lines.append(fmt((pB[0] + groove_margin, max(pQ[1], cpQ[1]) + groove_margin)))
+
+        scr_lines.append("CENTERLINE")
+        scr_lines.append(fmt(midpoint(pQ, pB)))
+        scr_lines.append(fmt(midpoint(cpQ, cpB)))
         
         #reset to default for hatch and dims
         add_sysvar("CELWEIGHT", -1) 
@@ -409,6 +429,17 @@ for index, row in main_df.iterrows():
         SPACING = 6.5*dimscale
 
         # main symmetric
+        if not bore_to_spec:
+            symmetric_diameter_dim(pB,7*SPACING, pA)
+        else:
+            scr_lines.append("DIMLINEAR")
+            scr_lines.append(fmt(pB))
+            scr_lines.append(fmt(conjugate(pB))) 
+            scr_lines.append("T") # text edit 
+            scr_lines.append(f"""As required""") 
+            temp = midpoint(pB,conjugate(pB))
+            scr_lines.append(fmt(((temp[0]+7*SPACING),(temp[1]))))
+
         symmetric_diameter_dim(p3,8*SPACING, pA)
         symmetric_diameter_dim(pC,9*SPACING, pA)
         symmetric_diameter_dim(midpoint(pF,pE),10*SPACING, pA)
@@ -429,7 +460,7 @@ for index, row in main_df.iterrows():
         scr_lines.append(fmt(conjugate(pG))) 
         if thickness_to_spec:
             scr_lines.append("T") 
-            scr_lines.append("As required")  
+            scr_lines.append("As required") 
         temp = midpoint(conjugate(pH),conjugate(pG))
         scr_lines.append(fmt(((temp[0]),(temp[1]-2*SPACING)))) 
 
@@ -447,6 +478,7 @@ for index, row in main_df.iterrows():
         scr_lines.append(fmt(conjugate(p3))) 
         temp = conjugate(midpoint(p2,p3))
         scr_lines.append(fmt((temp[0],temp[1]+SPACING))) 
+
 
         # global roughness 
         SIDELENGTH = 3.5*dimscale
@@ -497,15 +529,6 @@ for index, row in main_df.iterrows():
         scr_lines.append("@0,0")  # Opposite corner (relative 0,0 forces no text wrapping)
         scr_lines.append(f"""\W0.75;Studbolt Size: {bolt_spec_metric}""") # Line 1
         scr_lines.append("")  
-        
-        # dimbreak - auto break crossing dims
-        scr_lines.append("DIMBREAK")
-        scr_lines.append("M")
-        scr_lines.append("C")
-        scr_lines.append(fmt((gx, gy)))
-        scr_lines.append(fmt((gx+210*dimscale, gy+297*dimscale)))
-        scr_lines.append("")
-        scr_lines.append("A")
 
         #drawing template
         scr_lines.append("-INSERT")
@@ -518,8 +541,8 @@ for index, row in main_df.iterrows():
         scr_lines.append("0")       # rotation
         
         #attributes
-        scr_lines.append(f"""EN 1092-1/05/E/DN{DN}/{PN}/[material]""")
-        scr_lines.append(f"""EN 1092-1/05/E/DN{DN}/{PN}/[материал]""")
+        scr_lines.append(f"""EN 1092-1/01/F/DN{DN}/{PN}/[material]""")
+        scr_lines.append(f"""EN 1092-1/01/F/DN{DN}/{PN}/[материал]""")
         scr_lines.append(f"1:{dimscale}")    #scale
         scr_lines.append(f"Маркировку фланца выполнить согласно EN 1092-1 п. 7")
         scr_lines.append(f"Flange marking in accordance with EN 1092-1 Cl. 7 /")
@@ -540,7 +563,7 @@ scr_lines.append("TEXT")
 scr_lines.append(fmt((START_DRAWING_POSITION[0]-1500,START_DRAWING_POSITION[1])))
 scr_lines.append(f"{1000}")
 scr_lines.append("90")
-scr_lines.append("BLIND")
+scr_lines.append("SLIP-ON")
 scr_lines.append("\n\n")
 
 scr_lines.append("TEXT")
@@ -553,6 +576,20 @@ scr_lines.append("\n\n")
 
 scr_lines.append("ZOOM")
 scr_lines.append("E")
+
+# dimbreak - auto break crossing dims
+scr_lines.append("DIMBREAK")
+scr_lines.append("M")
+scr_lines.append("C")
+scr_lines.append(fmt((gx+210*dimscale,gy)))
+scr_lines.append(fmt((START_DRAWING_POSITION[0],START_DRAWING_POSITION[1]+10000)))
+"""
+scr_lines.append(fmt((sel_x1, 2*sy-(max_y + 1))))
+scr_lines.append(fmt((sel_x2, sel_y2)))
+"""
+scr_lines.append("")
+scr_lines.append("A")
+
 # Restore defaults
 add_sysvar("CMDECHO", 1)
 add_sysvar("DYNMODE", 3)

@@ -1,17 +1,10 @@
-## ASME Flanges
+## EN slip on rf 
+import pandas as pd 
 import math
 import csv
 import os
 from fractions import Fraction
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-input_file = os.path.join(script_dir, 'ASME_data.csv')
-output_file = os.path.join(script_dir, 'commands.scr')
-scr_lines = []
-
-def bolt_spec(diameter):
-    soft_conversion = {"0.5":"M14","0.625":"M16", "0.75":"M20", "0.875":"M24"}
-    return (Fraction(str(diameter)), soft_conversion[diameter])
 
 def fmt(pt):
     """format point as an AutoCAD coordinate string."""
@@ -67,7 +60,6 @@ def line(*points):
     scr_lines.append("LINE")
     for p in points: 
         scr_lines.append(fmt(p))
-    scr_lines.append(fmt(points[0]))
     scr_lines.append("")
 
 
@@ -115,61 +107,89 @@ def add_sysvar(name, value):
     scr_lines.append(name)
     scr_lines.append(str(value))
 
-
-with open(input_file, 'r') as f:
-    reader = csv.reader(f)
-    header = next(reader)#skip header
-
-
-    # random settings to make the script be able to do everything itself
-    add_sysvar("VTENABLE", 0)
-    add_sysvar("DYNMODE", 0)
-    add_sysvar("CMDECHO", 0)
-    add_sysvar("OSMODE", 0)
-    add_sysvar("ATTDIA", 0)
-    add_sysvar("ATTREQ", 1)
-    add_sysvar("DIMJUST",0)
-    add_sysvar("DIMTMOVE", 0)
-    scr_lines.append("VIEWRES")
-    scr_lines.append("Y")
-    scr_lines.append("20000")
-    scr_lines.append("TEXTSTYLE")
-    scr_lines.append("ROMANS")
+def bolt_spec(diameter):
+    soft_conversion = {"0.5":"M14","0.625":"M16", "0.75":"M20", "0.875":"M24"}
+    return (Fraction(str(diameter)), soft_conversion[diameter])
 
 
-    START_DRAWING_POSITION = (0,-2500)
-    gx, gy = START_DRAWING_POSITION # this is the bottom left hand corner of the current drawing
+script_dir = os.path.dirname(os.path.abspath(__file__))
+output_file = os.path.join(script_dir, 'commands.scr')
+scr_lines = []
+
+csv_files = [
+    'en_flange_data.csv',
+    'EN_PN6.csv',
+    'EN_PN10.csv',
+    'EN_PN16.csv',
+    'EN_PN25.csv'
+]
+
+# Create a dictionary to hold all your dataframes
+dfs = {}
+
+for filename in csv_files:
+    file_path = os.path.join(script_dir, filename)
+    # Strip the '.csv' extension to use as a clean dictionary key
+    key_name = filename.replace('.csv', '') 
+    
+    # Load the CSV into the dictionary
+    dfs[key_name] = pd.read_csv(file_path)
+
+main_df = dfs['en_flange_data']
+pn6_df = dfs['EN_PN6']
+pn10_df = dfs['EN_PN10']
+pn16_df = dfs['EN_PN16']
+pn25_df = dfs['EN_PN25']
+
+# random settings to make the script be able to do everything itself
+add_sysvar("VTENABLE", 0)
+add_sysvar("DYNMODE", 0)
+add_sysvar("CMDECHO", 0)
+add_sysvar("OSMODE", 0)
+add_sysvar("ATTDIA", 0)
+add_sysvar("ATTREQ", 1)
+add_sysvar("DIMJUST",0)
+add_sysvar("DIMTMOVE", 0)
+scr_lines.append("VIEWRES")
+scr_lines.append("Y")
+scr_lines.append("20000")
+scr_lines.append("TEXTSTYLE")
+scr_lines.append("ROMANS")
 
 
-    #start reading individual flanges here
-    for row in reader:
+START_DRAWING_POSITION = (0,-40000)
+gx, gy = START_DRAWING_POSITION # this is the bottom left hand corner of the current drawing
 
-        Type = row[3]
-        if Type != "Slip On":
-            continue
+for index, row in main_df.iterrows():
 
-        Series = float(row[0])
-        NPS = float(row[1])
-        Schedule = row[2]
-        RF_OD = float(row[4]) #raised face OD
-        h = float(row[5])     #face step height
-        O = float(row[6])     #OD of flange
-        W = float(row[7])     #Bolt circle diameter
-        d = float(row[9])     #bolt hole diameter (mm)
-        n = int(row[10])      #number of bolts
-        bolt_spec_imperial = row[11]
-        bolt_spec_metric = row[12]
-        L = float(row[13])    #stud bolt length
-        tf = float(row[14])   #flange thickness
-        X = float(row[15])    #hub diameter
-        A_h = float(row[16])  #Neck chamfer
-        Y = float(row[17])
-        B = float(row[19])
-
+#start reading individual flanges here
+    for col_name, d1 in row.loc["d1_PN6":"d1_PN25"].items():
         bore_to_spec = False
+        thickness_to_spec = False
+        Type = "Slip-On"
+        Facing = "RF"
+        DN = row["DN"]
+        PN = col_name.replace("d1_", "")
+        #print(f"DN{DN} {PN} d1:{d1}")
+        df = dfs["EN_"+PN]
+        O = df.loc[df['DN'] == DN, 'D'].values[0] #Flange OD
+        W = df.loc[df['DN'] == DN, 'K'].values[0]     #Bolt circle diameter
+        d = df.loc[df['DN'] == DN, 'L'].values[0]     #bolt hole diameter (mm)
+        n = df.loc[df['DN'] == DN, 'n'].values[0]     #number of bolts
+        bolt_spec_metric = df.loc[df['DN'] == DN, 'd'].values[0]
+        tf = df.loc[df['DN'] == DN, 'c1'].values[0]   #flange thickness
+        h = float(row["f1"])
+        RF_OD = d1
+        B = df.loc[df['DN'] == DN, 'B1'].values[0]
+
         if B == -999:
+            B = RF_OD - 30
             bore_to_spec = True
-            B = A_h-10
+        if tf == -999:
+            tf = 100
+            thickness_to_spec = True
+        
+        tf = tf-h #### EUROPE DONT FORGET IM KROOZ
 
         scales = [1, 2, 2.5, 4, 5, 10, 15, 20]
         
@@ -215,19 +235,22 @@ with open(input_file, 'r') as f:
         pA = (sx -(-tf -h),  sy)
         pB = (sx -(-tf -h),  sy + B/2)
         pC = (sx -(-tf -h),  sy + RF_OD/2)
-        pD = (sx -(-tf  ),   sy + RF_OD/2)
+
+        #pD = (sx -(-tf  ),   sy + RF_OD/2) ########### we modify old pD to add chamfer
+        pD = (sx -(-tf  ),   sy + RF_OD/2 + h)
+
         pE = (sx -(-tf  ),   sy + W/2 - d/2)
         pF = (sx -(-tf  ),   sy + W/2 + d/2)
         pG = (sx -(-tf  ),   sy + O/2)
         pH = (sx -(-tf +tf), sy + O/2)
         pI = (sx -(-tf +tf), sy + W/2 + d/2)
         pJ = (sx -(-tf +tf), sy + W/2 - d/2)
-        pK = (sx -(-tf +tf), sy + X/2)
-        pL = (sx -(-tf +tf), sy + A_h/2)
-        pM = (sx -(-tf + Y - ((A_h-B)/2 -2)*math.tan((math.pi/180)*37.5) ),sy + A_h/2)
-        pN = (sx -(-tf + Y),  sy + B/2 + 2)
-        pO = (sx -(-tf + Y),  sy + B/2)
-        pP = (sx -(-tf + Y),  sy)
+        #pK = (sx -(-tf +tf), sy + X/2)
+        #pL = (sx -(-tf +tf), sy + A_h/2)
+        #pM = (sx -(-tf + Y - ((A_h-B)/2 -2)*math.tan((math.pi/180)*37.5) ),sy + A_h/2)
+        #pN = (sx -(-tf + Y),  sy + B/2 + 2)
+        #pO = (sx -(-tf + Y),  sy + B/2)
+        #pP = (sx -(-tf + Y),  sy)
         pQ = (sx -(-tf + tf), sy + B/2)
         pR = (sx -(-tf + tf), sy)
 
@@ -253,8 +276,8 @@ with open(input_file, 'r') as f:
 
 
 # Collect ALL X and Y coordinates to find the true bounding box
-        all_x = [pA[0], pB[0], pC[0], pD[0], pE[0], pF[0], pG[0], pH[0], pI[0], pJ[0], pK[0], pL[0], pM[0], pN[0], pO[0], pP[0]]
-        all_y = [pA[1], pB[1], pC[1], pD[1], pE[1], pF[1], pG[1], pH[1], pI[1], pJ[1], pK[1], pL[1], pM[1], pN[1], pO[1], pP[1]]
+        all_x = [pA[0], pE[0], pF[0], pG[0], pH[0], pI[0], pJ[0]]
+        all_y = [pA[1], pE[1], pF[1], pG[1], pH[1], pI[1], pJ[1]]
         
         min_x = min(all_x)
         max_x = max(all_x)
@@ -283,23 +306,36 @@ with open(input_file, 'r') as f:
         scr_lines.append(fmt((gx+75, gy + 305*dimscale)))
         scr_lines.append(f"{20*dimscale}")
         scr_lines.append("0")
-        scr_lines.append(f"""{Type}""")
+        scr_lines.append(f"""Slip-On RF""")
         scr_lines.append("\n\n")
 
         scr_lines.append("TEXT")
         scr_lines.append(fmt((gx, gy + 335*dimscale)))
         scr_lines.append(f"{20*dimscale}")
         scr_lines.append("0")
-        scr_lines.append(f"""#{Series} NPS {NPS}" """)
+        scr_lines.append(f"""DN{DN} {PN}""")
         scr_lines.append("\n\n")
 
         #--- Draw line segments
-        line(pB,pC,pD,pE,pJ,pK,pQ,pB)
-        line(pF,pG,pH,pI)
-        line(pB,pA)
-        line(pQ,pR)
-        line(pF, pE)
-        line(pI,pJ)
+
+        if pD[1] > pE[1]:
+            line(pQ,pB,pC,pD)
+            line(pE,pJ,pR)
+            line(pF,pG,pH,pI,pF)
+            line(pF, pD)
+            line(pI,pJ)
+            line(pA,pB)
+            scr_lines.append("LINE")
+            scr_lines.append(fmt(pE))
+            scr_lines.append(f"@{pD[1]-pE[1]},0")
+            scr_lines.append("")
+        else:
+            line(pQ,pB,pC,pD,pE,pJ,pR)
+            line(pF,pG,pH,pI,pF)
+            line(pF, pD)
+            line(pI,pJ)
+            line(pA,pB)
+
 
         #Change to DIM layer
         scr_lines.append("CLAYER")
@@ -312,9 +348,13 @@ with open(input_file, 'r') as f:
 
         scr_lines.append("-HATCH")
         scr_lines.append(fmt(midpoint(pH,pG,pF,pI)))
-        scr_lines.append(fmt(midpoint(pE,pJ,pB)))
         scr_lines.append("")   
         
+        #hatch center
+        scr_lines.append("-HATCH")
+        scr_lines.append(fmt(midpoint(pE,pJ,pQ)))
+        scr_lines.append("")  
+
 
         # --- Mirror 
         scr_lines.append("MIRROR")
@@ -325,6 +365,7 @@ with open(input_file, 'r') as f:
         scr_lines.append(fmt((sx, sy)))                  # First point of mirror line (x-axis)
         scr_lines.append(fmt((sx + 1, sy)))              # Second point of mirror line
         scr_lines.append("N")                           # Don't erase source objects
+
 
         # Centerlines 
         #Change to centerline layer
@@ -359,22 +400,15 @@ with open(input_file, 'r') as f:
         scr_lines.append(fmt(midpoint(cpJ, cpE)))
 
         # main centerline
-        cpO = conjugate(pO); cpB = conjugate(pB)
+        cpQ = conjugate(pQ); cpB = conjugate(pB)
         scr_lines.append("ZOOM")
         scr_lines.append("W")
-        scr_lines.append(fmt((pO[0] - groove_margin, min(pO[1], cpO[1]) - groove_margin)))
-        scr_lines.append(fmt((pB[0] + groove_margin, max(pO[1], cpO[1]) + groove_margin)))
+        scr_lines.append(fmt((pQ[0] - groove_margin, min(pQ[1], cpQ[1]) - groove_margin)))
+        scr_lines.append(fmt((pB[0] + groove_margin, max(pQ[1], cpQ[1]) + groove_margin)))
 
         scr_lines.append("CENTERLINE")
-        scr_lines.append(fmt(midpoint(pO, pB)))
-        scr_lines.append(fmt(midpoint(cpO, cpB)))
-
-        #zoom back out
-        add_sysvar("PICKBOX", 3)
-        scr_lines.append("ZOOM")
-        scr_lines.append("W")
-        scr_lines.append(fmt((sel_x1, 2*sy-(max_y + 1))))
-        scr_lines.append(fmt((sel_x2, sel_y2)))
+        scr_lines.append(fmt(midpoint(pQ, pB)))
+        scr_lines.append(fmt(midpoint(cpQ, cpB)))
         
         #reset to default for hatch and dims
         add_sysvar("CELWEIGHT", -1) 
@@ -384,13 +418,22 @@ with open(input_file, 'r') as f:
         scr_lines.append("CLAYER") # switch back 
         scr_lines.append("DIM")
 
-
         # DIMS
         SPACING = 6.5*dimscale
 
         # main symmetric
-        symmetric_diameter_dim(pB, SPACING, pA)
-        symmetric_diameter_dim(pC, 2*SPACING, pA)
+        if not bore_to_spec:
+            symmetric_diameter_dim(pB,SPACING, pA)
+        else:
+            scr_lines.append("DIMLINEAR")
+            scr_lines.append(fmt(pB))
+            scr_lines.append(fmt(conjugate(pB))) 
+            scr_lines.append("T") # text edit 
+            scr_lines.append(f"""As required""") 
+            temp = midpoint(pB,conjugate(pB))
+            scr_lines.append(fmt(((temp[0]+SPACING),(temp[1]))))
+
+        symmetric_diameter_dim(pC,2*SPACING, pA)
         symmetric_diameter_dim(midpoint(pF,pE),3*SPACING, pA)
         symmetric_diameter_dim(pG,4*SPACING, pA)
 
@@ -400,23 +443,26 @@ with open(input_file, 'r') as f:
         scr_lines.append(fmt(pJ)) 
         scr_lines.append("T") # text edit 
         scr_lines.append(f"""%%c<>\X{n} holes""") 
-        temp = midpoint(pO,conjugate(pO))
+        temp = pR
         scr_lines.append(fmt(((temp[0]-5*SPACING),(temp[1])))) 
-
 
         # thickness b and h, and little one H1
         scr_lines.append("DIMLINEAR") 
         scr_lines.append(fmt(conjugate(pH))) # flange body thickness, excluding neck
         scr_lines.append(fmt(conjugate(pG))) 
+        if thickness_to_spec:
+            scr_lines.append("T") 
+            scr_lines.append("As required") 
         temp = midpoint(conjugate(pH),conjugate(pG))
         scr_lines.append(fmt(((temp[0]),(temp[1]-2*SPACING)))) 
 
         scr_lines.append("DIMLINEAR")
         scr_lines.append(fmt(conjugate(pG))) #chamfer dim
         scr_lines.append(fmt(conjugate(pC))) 
+        scr_lines.append("T") # text edit 
+        scr_lines.append(f"<>x45%%d") 
         temp = (conjugate(pG)[0], conjugate(pG)[1])
         scr_lines.append(fmt(((temp[0]),(temp[1]-1*SPACING)))) 
-        
 
         # global roughness 
         SIDELENGTH = 3.5*dimscale
@@ -433,18 +479,7 @@ with open(input_file, 'r') as f:
         draw_check_mark((p[0] + 33*dimscale, p[1]), SIDELENGTH*1.25)
 
         # leaders
-        #leader1
-        scr_lines.append("LEADER")
-        scr_lines.append(fmt(midpoint(pD,pC)))
-        q = (p[0]-30*dimscale,p[1]-1*dimscale)
-        scr_lines.append(fmt(q))
-        scr_lines.append("")
-        scr_lines.append("Ra 25")
-        scr_lines.append("")
-
-        # roughness symbol (face1)
-        r = (q[0]+20*dimscale,q[1]+1.25*dimscale)
-        draw_roughness_symbol(r, SIDELENGTH)
+ 
 
         #leader2
         scr_lines.append("LEADER")
@@ -458,43 +493,32 @@ with open(input_file, 'r') as f:
         # roughness symbol (face2)
         r = (q[0]+25*dimscale,q[1]+1.25*dimscale)
         draw_roughness_symbol(r, SIDELENGTH)
-
+        
         # bolt spec 
         scr_lines.append("-MTEXT")  
         scr_lines.append(fmt((gx + 34*dimscale, gy+180*dimscale))) # First corner
         scr_lines.append("H") # Trigger height option
         scr_lines.append(f"{3*dimscale}") # Specify height
         scr_lines.append("@0,0")  # Opposite corner (relative 0,0 forces no text wrapping)
-        scr_lines.append(f"""\W0.75;Studbolt Size: {bolt_spec(bolt_spec_imperial)[0]}" UNC""") # Line 1
-        scr_lines.append(f"""\W0.75;or {bolt_spec(bolt_spec_imperial)[1]} x {L} Long""") # Line 2
+        scr_lines.append(f"""\W0.75;Studbolt Size: {bolt_spec_metric}""") # Line 1
         scr_lines.append("")  
-
-        # dimbreak - auto break crossing dims
-        scr_lines.append("DIMBREAK")
-        scr_lines.append("M")
-        scr_lines.append("C")
-        scr_lines.append(fmt((sel_x1, 2*sy-(max_y + 1))))
-        scr_lines.append(fmt((sel_x2, sel_y2)))
-        scr_lines.append("")
-        scr_lines.append("A")
 
         #drawing template
         scr_lines.append("-INSERT")
-        scr_lines.append("asme_flange_template")  
+        scr_lines.append("en_flange_template")  
         scr_lines.append(fmt((gx, gy))) # corner in bottom left at relative 0,0     
         
         #scale it
         scr_lines.append(str(dimscale))            # x
         scr_lines.append(str(dimscale))            # Y 
         scr_lines.append("0")       # rotation
-
+        
         #attributes
-        scr_lines.append(f"""{NPS:g}", CL{Series:g}, RF, SO, [material], B16.5""")
-        scr_lines.append(f"""{NPS:g}", CL{Series:g}, RF, SO, [материал], B16.5""")
+        scr_lines.append(f"""EN 1092-1/01/B1/DN{DN}/{PN}/[material]""")
+        scr_lines.append(f"""EN 1092-1/01/B1/DN{DN}/{PN}/[материал]""")
         scr_lines.append(f"1:{dimscale}")    #scale
-        scr_lines.append(f"Маркировку фланца выполнить согласно MSS SP-25")
-        scr_lines.append(f"Flange marking in accordance with MSS SP-25 /")
-
+        scr_lines.append(f"Маркировку фланца выполнить согласно EN 1092-1 п. 7")
+        scr_lines.append(f"Flange marking in accordance with EN 1092-1 Cl. 7 /")
 
         #name
         scr_lines.append("TEXT")
@@ -506,24 +530,38 @@ with open(input_file, 'r') as f:
 
         # Update startpos for next shape
         gx += 200*dimscale
-    
+        
+#type label
+scr_lines.append("TEXT")
+scr_lines.append(fmt((START_DRAWING_POSITION[0]-1500,START_DRAWING_POSITION[1])))
+scr_lines.append(f"{1000}")
+scr_lines.append("90")
+scr_lines.append("SLIP-ON")
+scr_lines.append("\n\n")
 
-            
-    #type label
-    scr_lines.append("TEXT")
-    scr_lines.append(fmt(START_DRAWING_POSITION))
-    scr_lines.append(f"{150}")
-    scr_lines.append("90")
-    scr_lines.append("Slip On")
-    scr_lines.append("\n\n")
+scr_lines.append("TEXT")
+scr_lines.append(fmt(START_DRAWING_POSITION))
+scr_lines.append(f"{1000}")
+scr_lines.append("90")  
+scr_lines.append("RF")
+scr_lines.append("\n\n")
 
+scr_lines.append("ZOOM")
+scr_lines.append("E")
 
-    scr_lines.append("ZOOM")
-    scr_lines.append("E")
-    # Restore defaults
-    add_sysvar("CMDECHO", 1)
-    add_sysvar("DYNMODE", 3)
-    add_sysvar("OSMODE", 4133)
+# dimbreak - auto break crossing dims
+scr_lines.append("DIMBREAK")
+scr_lines.append("M")
+scr_lines.append("C")
+scr_lines.append(fmt((gx+210*dimscale,gy)))
+scr_lines.append(fmt((START_DRAWING_POSITION[0],START_DRAWING_POSITION[1]+10000)))
+scr_lines.append("")
+scr_lines.append("A")
+
+# Restore defaults
+add_sysvar("CMDECHO", 1)
+add_sysvar("DYNMODE", 3)
+add_sysvar("OSMODE", 4133)
 
 # Write .scr file
 #join with newlines
