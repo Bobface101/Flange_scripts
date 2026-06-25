@@ -11,7 +11,7 @@ scr_lines = []
 def fmt(pt):
     """format point as an AutoCAD coordinate string."""
     x, y = pt
-    return f"{x:g},{y:g}"
+    return f"{x:.4f},{y:.4f}"
 
 def lengthof(p1, p2):
      x1,y1 = p1

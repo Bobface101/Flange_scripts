@@ -9,7 +9,7 @@ from fractions import Fraction
 def fmt(pt):
     """format point as an AutoCAD coordinate string."""
     x, y = pt
-    return f"{x:g},{y:g}"
+    return f"{x:.4f},{y:.4f}"
 
 def lengthof(p1, p2):
      x1,y1 = p1
@@ -63,22 +63,48 @@ def line(*points):
     scr_lines.append("")
 
 
-def draw_roughness_symbol(startpos, sidelength):
-        h = sidelength * (3**0.5 / 2)
-        p_left = (startpos[0] - sidelength / 2, startpos[1] + h)
-        p_right = (startpos[0] + sidelength / 2, startpos[1] + h)
-        p_ext = (startpos[0] + sidelength, startpos[1] + 2 * h)
-
+def draw_roughness_symbol(startpos, text_height, type):
+    
+    h = 1.5*text_height
+    sidelength = 2*h / 3**0.5
+    p_left = (startpos[0] - sidelength / 2, startpos[1] + h)
+    p_right = (startpos[0] + sidelength / 2, startpos[1] + h)
+    p_ext = (startpos[0] + sidelength, startpos[1] + 2 * h)
+    
+    line(p_left,startpos,p_ext)
+    if type == 1:
+        line(p_left, p_right)
+    elif type == 3:
+        line(p_left, p_right)
         scr_lines.append("LINE")
-        scr_lines.append(fmt(p_left))
-        scr_lines.append(fmt(startpos))
         scr_lines.append(fmt(p_ext))
+        scr_lines.append(f"@{13*h},0")
         scr_lines.append("")
 
-        scr_lines.append("LINE")
-        scr_lines.append(fmt(p_left))
-        scr_lines.append(fmt(p_right))
-        scr_lines.append("")
+        scr_lines.append("TEXT")
+        temp = (startpos[0]+sidelength*0.75,startpos[1]+h/6)
+        scr_lines.append(fmt(temp))
+        scr_lines.append(f"{text_height}")
+        scr_lines.append("0")
+        scr_lines.append("C")
+
+        scr_lines.append("TEXT")
+        scr_lines.append(fmt((temp[0]+sidelength,temp[1])))
+        scr_lines.append(f"{text_height}")
+        scr_lines.append("0")
+        scr_lines.append("Rz 12.5-50")
+
+        scr_lines.append("TEXT")
+        scr_lines.append(fmt((temp[0]+sidelength,temp[1]+h)))
+        scr_lines.append(f"{text_height}")
+        scr_lines.append("0")
+        scr_lines.append("Ra 3.2-12.5")
+
+        scr_lines.append("TEXT")
+        scr_lines.append(fmt((temp[0],temp[1]+2*h)))
+        scr_lines.append(f"{text_height}")
+        scr_lines.append("0")
+        scr_lines.append("TURN/1.0mm RAD MIN")
 
 def draw_check_mark(startpos, sidelength):
     x, y = startpos
@@ -185,6 +211,14 @@ for index, row in main_df.iterrows():
 
         tf = tf - h # europeans include the face step height in the dim for flange thickness
 
+        G_max = df.loc[df['DN'] == DN, 'G_max'].values[0]
+        
+        skip_centre_machining = True
+        if G_max == "—":
+            skip_centre_machining = False
+        else:
+            G_max = float(G_max)
+
         scales = [1, 2, 2.5, 4, 5, 10, 15, 20]
         
         #find a scale which fits in the space
@@ -247,6 +281,13 @@ for index, row in main_df.iterrows():
         #pP = (sx -(-tf + Y),  sy)
         #pQ = (sx -(-tf + tf), sy + B/2)
         pR = (sx -(-tf + tf), sy)
+        
+        t1 = (pC[0]+1*dimscale,pC[1])
+        if skip_centre_machining:
+            t2 = (pC[0]+1*dimscale,sy+G_max/2)
+        else:
+            t2 = (pC[0]+1*dimscale,sy)
+        
 
         """
         mappings:
@@ -270,8 +311,8 @@ for index, row in main_df.iterrows():
 
 
 # Collect ALL X and Y coordinates to find the true bounding box
-        all_x = [pA[0], pE[0], pF[0], pG[0], pH[0], pI[0], pJ[0]]
-        all_y = [pA[1], pE[1], pF[1], pG[1], pH[1], pI[1], pJ[1]]
+        all_x = [pA[0], pE[0], pF[0], pG[0], pH[0], pI[0], pJ[0], t1[0], t2[0]]
+        all_y = [pA[1], pE[1], pF[1], pG[1], pH[1], pI[1], pJ[1], t1[1], t2[1]]
         
         min_x = min(all_x)
         max_x = max(all_x)
@@ -328,6 +369,11 @@ for index, row in main_df.iterrows():
             line(pF, pD)
             line(pI,pJ)
 
+        #chain line 
+        scr_lines.append("CLAYER")
+        scr_lines.append("CHAIN")
+        add_sysvar("CELTSCALE", 25*dimscale)
+        line(t1,t2)
 
         #Change to DIM layer
         scr_lines.append("CLAYER")
@@ -401,9 +447,9 @@ for index, row in main_df.iterrows():
         SPACING = 6.5*dimscale
 
         # main symmetric
-        symmetric_diameter_dim(pC,SPACING, pA)
-        symmetric_diameter_dim(midpoint(pF,pE),2*SPACING, pA)
-        symmetric_diameter_dim(pG,3*SPACING, pA)
+        symmetric_diameter_dim(pC,2*SPACING, pA)
+        symmetric_diameter_dim(midpoint(pF,pE),3*SPACING, pA)
+        symmetric_diameter_dim(pG,4*SPACING, pA)
 
         # bolt 
         scr_lines.append("DIMLINEAR")
@@ -416,7 +462,7 @@ for index, row in main_df.iterrows():
 
         # thickness b and h, and little one H1
         scr_lines.append("DIMLINEAR") 
-        scr_lines.append(fmt(conjugate(pH))) # flange body thickness, excluding neck
+        scr_lines.append(fmt(conjugate(pH))) # flange body thickness,
         scr_lines.append(fmt(conjugate(pG))) 
         if thickness_to_spec:
             scr_lines.append("T") 
@@ -434,47 +480,31 @@ for index, row in main_df.iterrows():
         temp = (conjugate(pG)[0], conjugate(pG)[1])
         scr_lines.append(fmt(((temp[0]),(temp[1]-1*SPACING)))) 
 
-        # global roughness 
-        SIDELENGTH = 3.5*dimscale
-        scr_lines.append("TEXT")
-        p = (gx+165*dimscale, gy+282.675*dimscale)
-        scr_lines.append(fmt(p))
-        scr_lines.append(f"{3.5*dimscale}")
-        scr_lines.append("0")
-        scr_lines.append("Rz 100")
-        scr_lines.append("\n\n")
-
-        #symbols
-        draw_roughness_symbol((p[0] + 24.75*dimscale, p[1]), SIDELENGTH)
-        draw_check_mark((p[0] + 33*dimscale, p[1]), SIDELENGTH*1.25)
-
-        # leaders
-        #leader1
-        scr_lines.append("LEADER")
-        scr_lines.append(fmt(midpoint(pD,pC)))
-        q = (p[0]-30*dimscale,p[1]-1*dimscale)
-        scr_lines.append(fmt(q))
-        scr_lines.append("")
-        scr_lines.append("Ra 25")
-        scr_lines.append("")
-
-        # roughness symbol (face1)
-        r = (q[0]+20*dimscale,q[1]+1.25*dimscale)
-        draw_roughness_symbol(r, SIDELENGTH)
- 
+        # gasket area dim 
+        if skip_centre_machining:
+            scr_lines.append("DIMLINEAR")
+            scr_lines.append(fmt(t2)) 
+            scr_lines.append(fmt(conjugate(t2))) 
+            scr_lines.append("T") # text edit 
+            scr_lines.append(f"""%%c<>""")
+            scr_lines.append(fmt((sx+tf+SPACING,sy))) 
+        
+        # face seal leader callout
+        p = (gx+133*dimscale, gy+275*dimscale)
 
         #leader2
         scr_lines.append("LEADER")
-        scr_lines.append(fmt(midpoint(pA,pC)))
-        q = (p[0],p[1]-2*SPACING)
+        scr_lines.append(fmt(midpoint(t1,t2)))
+        q = p
         scr_lines.append(fmt(q))
+        scr_lines.append(f"@{5*dimscale},0")
         scr_lines.append("")
-        scr_lines.append("Ra 12,5")
         scr_lines.append("")
+        scr_lines.append("N") #no text
 
         # roughness symbol (face2)
-        r = (q[0]+25*dimscale,q[1]+1.25*dimscale)
-        draw_roughness_symbol(r, SIDELENGTH)
+        r = (q[0]+2.5*dimscale,q[1])
+        draw_roughness_symbol(r, 3*dimscale,3)
         
         # bolt spec 
         scr_lines.append("-MTEXT")  
@@ -510,6 +540,13 @@ for index, row in main_df.iterrows():
         scr_lines.append(f"1:{dimscale}")    #scale
         scr_lines.append(f"Маркировку фланца выполнить согласно EN 1092-1 п. 7")
         scr_lines.append(f"Flange marking in accordance with EN 1092-1 Cl. 7 /")
+        scr_lines.append(f"J___-01")
+        scr_lines.append(f"----")
+        scr_lines.append(f"SK-J___-01-001")
+        scr_lines.append(f"1 OF 1")
+        scr_lines.append(f"0")
+        scr_lines.append(f"Specify material here")
+        scr_lines.append(f"Укажите материал здесь")
 
         #name
         scr_lines.append("TEXT")

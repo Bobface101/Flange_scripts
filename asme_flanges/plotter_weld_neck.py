@@ -15,7 +15,7 @@ def bolt_spec(diameter):
 
 def fmt(pt):
     x, y = pt
-    return f"{x:g},{y:g}"
+    return f"{x:.4f},{y:.4f}"
 
 def lengthof(p1, p2):
      x1,y1 = p1
@@ -66,26 +66,45 @@ def line(*points):
     scr_lines.append("LINE")
     for p in points: 
         scr_lines.append(fmt(p))
-    scr_lines.append(fmt(points[0]))
     scr_lines.append("")
 
-
-def draw_roughness_symbol(startpos, sidelength):
-        h = sidelength * (3**0.5 / 2)
-        p_left = (startpos[0] - sidelength / 2, startpos[1] + h)
-        p_right = (startpos[0] + sidelength / 2, startpos[1] + h)
-        p_ext = (startpos[0] + sidelength, startpos[1] + 2 * h)
-
+def draw_roughness_symbol(startpos, text_height, type):
+    
+    h = 1.5*text_height
+    sidelength = 2*h / 3**0.5
+    p_left = (startpos[0] - sidelength / 2, startpos[1] + h)
+    p_right = (startpos[0] + sidelength / 2, startpos[1] + h)
+    p_ext = (startpos[0] + sidelength, startpos[1] + 2 * h)
+    
+    line(p_left,startpos,p_ext)
+    if type == 1:
+        line(p_left, p_right)
+    elif type == 2:
+        line(p_left, p_right)
         scr_lines.append("LINE")
-        scr_lines.append(fmt(p_left))
-        scr_lines.append(fmt(startpos))
         scr_lines.append(fmt(p_ext))
+        scr_lines.append(f"@{13*h},0")
         scr_lines.append("")
 
-        scr_lines.append("LINE")
-        scr_lines.append(fmt(p_left))
-        scr_lines.append(fmt(p_right))
-        scr_lines.append("")
+        scr_lines.append("TEXT")
+        temp = (startpos[0]+sidelength*0.75,startpos[1]+h/6)
+        scr_lines.append(fmt(temp))
+        scr_lines.append(f"{text_height}")
+        scr_lines.append("0")
+        scr_lines.append("C")
+
+        scr_lines.append("TEXT")
+        scr_lines.append(fmt((temp[0]+sidelength,temp[1]+h)))
+        scr_lines.append(f"{text_height}")
+        scr_lines.append("0")
+        scr_lines.append("Ra 3.2-6.3")
+
+        scr_lines.append("TEXT")
+        scr_lines.append(fmt((temp[0]+sidelength,temp[1]+2*h)))
+        scr_lines.append(f"{text_height}")
+        scr_lines.append("0")
+        scr_lines.append("TURN/1.5mm RAD MIN")
+
 
 def draw_check_mark(startpos, sidelength):
     x, y = startpos
@@ -295,32 +314,12 @@ with open(input_file, 'r') as f:
 
         #--- Draw line segments
         line(pB,pC,pD,pE,pJ,pK,pL,pM,pN,pO,pB)
-        line(pF,pG,pH,pI)
+        line(pF,pG,pH,pI,pF)
         line(pB,pA)
         line(pO,pP)
         line(pF, pE)
         line(pI,pJ)
-    
-        
-        #Fillets
-        """
 
-        FILLET_RADIUS = lengthof(pL, pK)/3.5 # I chose 3.5 empirically determined from COMPASS
-        FILLET_RADIUS = round(2*FILLET_RADIUS)/2 # round to nearest 0.5
-
-        scr_lines.append("FILLET")
-        scr_lines.append(fmt(midpoint(pM,pL)))
-        scr_lines.append("RADIUS")
-        scr_lines.append(f"{FILLET_RADIUS}")
-        scr_lines.append(fmt(midpoint(pL,pK)))
-
-        scr_lines.append("FILLET")
-        scr_lines.append(fmt(midpoint(pL,pK)))
-        scr_lines.append("RADIUS")
-        scr_lines.append(f"{FILLET_RADIUS}")
-        scr_lines.append(fmt(midpoint(pK,pJ)))
-        
-        """
 
         #Change to DIM layer
         scr_lines.append("CLAYER")
@@ -429,10 +428,10 @@ with open(input_file, 'r') as f:
 
         # thickness b and h, and little one H1
         scr_lines.append("DIMLINEAR") 
-        scr_lines.append(fmt(conjugate(pH))) # flange body thickness, excluding neck
-        scr_lines.append(fmt(conjugate(pG))) 
-        temp = midpoint(conjugate(pH),conjugate(pG))
-        scr_lines.append(fmt(((temp[0]),(temp[1]-2*SPACING)))) 
+        scr_lines.append(fmt(conjugate(pH))) # flange thickness, excluding neck
+        scr_lines.append(fmt(conjugate(pC))) 
+        temp = midpoint(conjugate(pC),conjugate(pG))
+        scr_lines.append(fmt(((temp[0]),(conjugate(pG)[1]-2*SPACING)))) 
 
         scr_lines.append("DIMLINEAR")
         scr_lines.append(fmt(conjugate(pG))) #chamfer dim
@@ -495,47 +494,23 @@ with open(input_file, 'r') as f:
         scr_lines.append(fmt(far_away_pt1))
         add_sysvar("DIMTMOVE", 0)
 
-        # global roughness 
-        SIDELENGTH = 3.5*dimscale
-        scr_lines.append("TEXT")
-        p = (gx+165*dimscale, gy+282.675*dimscale)
-        scr_lines.append(fmt(p))
-        scr_lines.append(f"{3.5*dimscale}")
-        scr_lines.append("0")
-        scr_lines.append("Rz 100")
-        scr_lines.append("\n\n")
-
-        #symbols
-        draw_roughness_symbol((p[0] + 24.75*dimscale, p[1]), SIDELENGTH)
-        draw_check_mark((p[0] + 33*dimscale, p[1]), SIDELENGTH*1.25)
-
         # leaders
-
-        #leader1
-        scr_lines.append("LEADER")
-        scr_lines.append(fmt(midpoint(pD,pC)))
-        q = (p[0]-30*dimscale,p[1]-1*dimscale)
-        scr_lines.append(fmt(q))
-        scr_lines.append("")
-        scr_lines.append("Ra 25")
-        scr_lines.append("")
-
-        # roughness symbol (face1)
-        r = (q[0]+20*dimscale,q[1]+1.25*dimscale)
-        draw_roughness_symbol(r, SIDELENGTH)
+        # face seal leader callout
+        p = (gx+133*dimscale, gy+275*dimscale)
 
         #leader2
         scr_lines.append("LEADER")
         scr_lines.append(fmt(midpoint(pB,pC)))
-        q = (p[0],p[1]-2*SPACING)
+        q = p
         scr_lines.append(fmt(q))
+        scr_lines.append(f"@{5*dimscale},0")
         scr_lines.append("")
-        scr_lines.append("Ra 12,5")
         scr_lines.append("")
+        scr_lines.append("N") #no text
 
         # roughness symbol (face2)
-        r = (q[0]+25*dimscale,q[1]+1.25*dimscale)
-        draw_roughness_symbol(r, SIDELENGTH)
+        r = (q[0]+2.5*dimscale,q[1])
+        draw_roughness_symbol(r, 3*dimscale,2)
 
         # bolt spec 
         scr_lines.append("-MTEXT")  
@@ -572,7 +547,13 @@ with open(input_file, 'r') as f:
         scr_lines.append(f"1:{dimscale}")    #scale
         scr_lines.append(f"Маркировку фланца выполнить согласно MSS SP-25")
         scr_lines.append(f"Flange marking in accordance with MSS SP-25 /")
-
+        scr_lines.append(f"Specify material here")
+        scr_lines.append(f"Укажите материал здесь")
+        scr_lines.append(f"J___-01")
+        scr_lines.append(f"----")
+        scr_lines.append(f"SK-J___-01-001")
+        scr_lines.append(f"1 OF 1")
+        scr_lines.append(f"0")
 
         #name
         scr_lines.append("TEXT")
@@ -603,7 +584,7 @@ with open(input_file, 'r') as f:
 
 # Write .scr file
 #join with newlines
-with open(output_file, 'w', encoding='utf-8-sig') as f:
+with open(output_file, 'a', encoding='utf-16-le') as f:
     f.write('\n'.join(scr_lines))
     f.write('\n')  # Single trailing newline to execute the last command
 
